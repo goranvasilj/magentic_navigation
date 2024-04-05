@@ -1,0 +1,5 @@
+<library path="lib/libMagneticNavigation">
+  <class name="magnetic_navigation/MagneticNavigation" type="magnetic_navigation::MagneticNavigation" base_class_type="nodelet::Nodelet">
+    <description>MagneticNavigation nodelet</description>
+  </class>
+</library>

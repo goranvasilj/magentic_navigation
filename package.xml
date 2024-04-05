@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="2">
+
+  <name>magnetic_navigation</name>
+  <version>1.0.0</version>
+  <description>The Example Waypoint Flier</description>
+
+  <maintainer email="matej.petrlik@fel.cvut.cz">Matej Petrlik</maintainer>
+  <author email="matej.petrlik@fel.cvut.cz">Matej Petrlik</author>
+
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>roscpp</depend>
+  <depend>nodelet</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>mrs_msgs</depend>
+  <depend>mrs_lib</depend>
+  <depend>dynamic_reconfigure</depend>
+
+  <export>
+    <nodelet plugin="${prefix}/nodelets.xml" />
+  </export>
+
+</package>
