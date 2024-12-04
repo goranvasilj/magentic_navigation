@@ -41,6 +41,12 @@
 #include <mrs_lib/msg_extractor.h>
 #include <mrs_lib/geometry/misc.h>
 
+
+/*tf*/
+#include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
+#include <tf/tf.h>
+
 /* for calling simple ros services */
 #include <std_srvs/Trigger.h>
 
@@ -66,6 +72,12 @@ public:
 private:
   /* flags */
   std::atomic<bool> is_initialized_ = false;
+  enum OPERATION_MODE {
+  	FOLLOW_LINE = 0, LEFT_RIGHT = 1, TEST_TAKEOFF_LAND = 2
+  };
+  int left_right_direction;
+  //transform listener
+  tf::TransformListener transform_listener;
 
   /* ros parameters */
   std::string _uav_name_;
@@ -142,6 +154,10 @@ private:
   double     _waypoint_desired_dist_;
   void       timerIdling(const ros::TimerEvent& te);
 
+
+  //test
+  double xpos,ypos,zpos, x_ref,y_ref,z_ref, heading, heading_ref;
+
   // | -------------------- support functions ------------------- |
 
   std::vector<mrs_msgs::Reference> matrixToPoints(const Eigen::MatrixXd& matrix);
@@ -164,6 +180,16 @@ void MagneticNavigation::onInit() {
   have_goal_        = false;
   is_idling_        = false;
   waypoints_loaded_ = false;
+  xpos=0;
+  ypos=0;
+  zpos=3;
+  x_ref=-1;
+  y_ref=0;
+  z_ref=0;
+  heading=1.57;
+  heading_ref=1.57;
+
+  left_right_direction=0;
 
   /* obtain node handle */
   ros::NodeHandle nh = nodelet::Nodelet::getMTPrivateNodeHandle();
@@ -232,7 +258,7 @@ void MagneticNavigation::onInit() {
   timer_check_subscribers_ = nh.createTimer(ros::Rate(_rate_timer_check_subscribers_), &MagneticNavigation::timerCheckSubscribers, this);
 
   // you can disable autostarting of the timer by the last argument
-  timer_publisher_reference_ = nh.createTimer(ros::Rate(_rate_timer_publisher_reference_), &MagneticNavigation::timerPublishSetReference, this, false, false);
+  timer_publisher_reference_ = nh.createTimer(ros::Rate(_rate_timer_publisher_reference_), &MagneticNavigation::timerPublishSetReference, this, false, true);
 
   // | --------------- initialize service servers --------------- |
 
@@ -284,7 +310,7 @@ void MagneticNavigation::callbackControlManagerDiag(const mrs_msgs::ControlManag
   geometry_msgs::Pose current_pose = mrs_lib::getPose(sh_odometry_.getMsg());
 
   double dist = distance(current_waypoint, current_pose);
-  ROS_INFO("[MagneticNavigation]: Distance to waypoint: %.2f", dist);
+  //ROS_INFO("[MagneticNavigation]: Distance to waypoint: %.2f", dist);
 
   if (have_goal_ && !diagnostics->tracker_status.have_goal) {
     have_goal_ = false;
@@ -307,28 +333,196 @@ void MagneticNavigation::callbackControlManagerDiag(const mrs_msgs::ControlManag
 
 //}
 
+
+double QuaternionToHeading(double qw,double qx,double qy,double qz)
+{
+	  double siny = +2.0 * (qw * qz + qy * qx);
+	  double cosy = +1.0 - 2.0 * (qx * qx + qz * qz);
+	  double heading1 = atan2(siny, cosy);      // in radians
+	  return heading1;
+}
+
+
 // | --------------------- timer callbacks -------------------- |
 
 /* timerPublishSetReference() //{ */
 
 void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::TimerEvent& te) {
 
-  if (!is_initialized_) {
+
+	if (!is_initialized_) {
     return;
+  }
+  static ros::Time start_time = ros::Time::now();
+  static bool landed=false;
+  OPERATION_MODE mode=OPERATION_MODE::TEST_TAKEOFF_LAND;
+  double x_diff, y_diff, z_diff, heading_diff;
+  if (mode == OPERATION_MODE::TEST_TAKEOFF_LAND)
+  {
+	  ros::Duration duration=ros::Time::now()- start_time;
+	  if (duration.toSec()>10 && landed == false)
+	  {
+		  landed=true;
+
+		  ROS_INFO("[MagneticNavigation]: Calling land service.");
+		  std_srvs::Trigger srv_land_call;
+		  srv_client_land_.call(srv_land_call);
+	  }
+	  return;
   }
 
   /* return if the uav is still flying to the previous waypoints */
-  if (have_goal_) {
+ /* if (have_goal_) {
     return;
   }
 
   /* return if the UAV is idling at a waypoint */
-  if (is_idling_) {
+/*  if (is_idling_) {
     return;
+  }*/
+/*  xpos=xpos+0.1;
+  ypos=ypos+0.1;*/
+  mrs_msgs::Reference ref;
+
+
+  tf::StampedTransform transform;
+  ros::Time t = ros::Time(0);
+  try {
+	  transform_listener.lookupTransform("uav1/fcu", "power_line", t, transform);
+
+  }
+  catch (tf::TransformException ex){
+  	ROS_ERROR("%s",ex.what());
+  	return;
+  }
+  double qw=transform.getRotation().getW();
+  double qx=transform.getRotation().getX();
+  double qy=transform.getRotation().getY();
+  double qz=transform.getRotation().getZ();
+
+  double heading1 =QuaternionToHeading(qw,qx,qy,qz);
+
+  // extract the pose part of the odometry
+  geometry_msgs::Pose current_pose = mrs_lib::getPose(sh_odometry_.getMsg());
+  double current_heading=QuaternionToHeading(current_pose.orientation.w,current_pose.orientation.x,current_pose.orientation.y,current_pose.orientation.z);
+
+
+  std::cout<<transform.getOrigin().x()<<" "<<transform.getOrigin().y()<<" "<<transform.getOrigin().z()<<" "<<heading1<<"    powerline heading "<< current_heading+heading1<<std::endl;
+
+
+  double dx=transform.getOrigin().x();
+  double dy=transform.getOrigin().y();
+  double dz=transform.getOrigin().z();
+
+  if (fabs(current_heading+heading1) >3.14159/2)
+  {
+	  heading1=heading1+3.14159265;
   }
 
+  double position_gain=0.01;
+  double max_position_speed=0.1;
+  double heading_gain=0.01;
+  double max_heading_speed=0.1;
+
+  if (mode == OPERATION_MODE::FOLLOW_LINE)
+  {
+	  double x_diff=(x_ref-dx)*position_gain;
+	  double y_diff=(y_ref-dy)*position_gain;
+	  double z_diff=(z_ref-dz)*position_gain;
+	  double heading_diff=(heading_ref-heading1)*heading_gain;
+
+	  if (fabs(x_diff)>max_position_speed) x_diff=(x_diff)/fabs(x_diff)*max_position_speed;
+	  if (fabs(y_diff)>max_position_speed) y_diff=(y_diff)/fabs(y_diff)*max_position_speed;
+	  if (fabs(z_diff)>max_position_speed) z_diff=(z_diff)/fabs(z_diff)*max_position_speed;
+	  if (fabs(heading_diff)>max_heading_speed) heading_diff=(heading_diff)/fabs(heading_diff)*max_heading_speed;
+
+	  if (fabs(x_ref-dx)<0.1 && fabs(y_ref-dy)<0.1 && fabs(z_ref-dz)<0.1 && fabs(heading_ref-heading1)<0.1)
+	  {
+		  y_diff=y_diff+0.1;
+	  }
+	  heading=heading-heading_diff;
+	  xpos=xpos-(cos(heading)*x_diff-sin(heading)*y_diff);
+	  ypos=ypos-(sin(heading)*x_diff+cos(heading)*y_diff);
+	  zpos=zpos-z_diff;
+  }
+  if (mode == OPERATION_MODE::LEFT_RIGHT)
+  {
+	  double x_ref1=1;
+	  double y_ref1=-1;
+	  double z_ref1=1;
+	  double x_ref2=1;
+	  double y_ref2=6;
+	  double z_ref2=1;
+
+
+
+	  geometry_msgs::Pose current_pose = mrs_lib::getPose(sh_odometry_.getMsg());
+
+
+	  double xwire= current_pose.position.x+(cos(heading)*dx-sin(heading)*dy);
+	  double ywire = current_pose.position.y+(sin(heading)*dx+cos(heading)*dy);
+	  double zwire = current_pose.position.z+dz;
+	  printf("wire pos %.2f %.2f %.2f\n",xwire,ywire,zwire);
+	  double xpos1=0,ypos1=0,zpos1=0;
+	  if (left_right_direction==0)
+	  {
+		  xpos1=x_ref1;
+		  ypos1=y_ref1;
+		  zpos1=z_ref1;
+	  }
+	  if (left_right_direction==1)
+	  {
+		  xpos1=x_ref2;
+		  ypos1=y_ref2;
+		  zpos1=z_ref2;
+	  }
+	  position_gain=0.02;
+	  double vx=(xpos1-current_pose.position.x)*position_gain;
+	  double vy=(ypos1-current_pose.position.y)*position_gain;
+	  double vz=(zpos1-current_pose.position.z)*position_gain*2;
+
+	  printf("velocities %.2f %.2f %.2f   %.2f %.2f %.2f\n",vx,vy,vz,xpos,ypos,zpos);
+	  max_position_speed=0.05;
+	  if (fabs(vx)>max_position_speed) vx=(vx)/fabs(vx)*max_position_speed;
+	  if (fabs(vy)>max_position_speed) vy=(vy)/fabs(vy)*max_position_speed;
+	  if (fabs(vz)>max_position_speed) vz=(vz)/fabs(vz)*max_position_speed;
+
+	  double ddx=xpos+vx-xwire;
+	  double ddy=ypos+vy-ywire;
+	  double ddz=zpos+vz-zwire;
+
+
+//	  if (sqrt((dx*dx+dy*dy+dz*dz))<1)
+	  if (sqrt((ddx*ddx+ddy*ddy+ddz*ddz))<1)
+	  {
+		  double reaction_gain=0.2;
+		  printf("Original vz %.2f\n",vz);
+//		  vz=vz+(1-sqrt((dx*dx+dy*dy+dz*dz)))*reaction_gain;
+		  vz=vz+(1-sqrt((ddx*ddx+ddy*ddy+ddz*ddz)))*reaction_gain;
+		  if (fabs(vz)>max_position_speed) vz=(vz)/fabs(vz)*max_position_speed;
+	  }
+
+
+
+
+	  if (fabs(xpos1-current_pose.position.x)+fabs(ypos1-current_pose.position.y)+fabs(zpos1-current_pose.position.z)<0.2)
+	  {
+		  left_right_direction=1-left_right_direction;
+		  printf("change left right %d\n",left_right_direction);
+	  }
+	  xpos=xpos+vx;
+	  ypos=ypos+vy;
+	  zpos=zpos+vz;
+
+  }
+  printf("%.2f %.2f %.2f\n",xpos,ypos,zpos);
+  ref.heading=heading;
+  ref.position.x=xpos;
+  ref.position.y=ypos;
+  ref.position.z=zpos;
+
   /* shutdown node after flying through all the waypoints (call land service before) */
-  if (idx_current_waypoint_ >= n_waypoints_) {
+  /*if (idx_current_waypoint_ >= n_waypoints_) {
 
     c_loop_++;
 
@@ -354,14 +548,17 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
     }
   }
 
+
   /* create new waypoint msg */
   mrs_msgs::ReferenceStamped new_waypoint;
+
+
 
   // set the frame id in which the reference is expressed
   new_waypoint.header.frame_id = _uav_name_ + "/" + _waypoints_frame_;
   new_waypoint.header.stamp    = ros::Time::now();
 
-  new_waypoint.reference = waypoints_.at(idx_current_waypoint_);
+  new_waypoint.reference = ref;//waypoints_.at(idx_current_waypoint_);
 
   // set the variable under the mutex
   mrs_lib::set_mutexed(mutex_current_waypoint_, waypoints_.at(idx_current_waypoint_), current_waypoint_);
@@ -381,7 +578,7 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
     waypoint_reached_ = false;
   }
 
-  have_goal_ = true;
+//  have_goal_ = true;
 }
 
 //}
