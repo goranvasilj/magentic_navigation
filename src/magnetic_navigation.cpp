@@ -183,7 +183,7 @@ void MagneticNavigation::onInit() {
   xpos=0;
   ypos=0;
   zpos=3;
-  x_ref=-1;
+  x_ref=-1.2;
   y_ref=0;
   z_ref=0;
   heading=1.57;
@@ -353,9 +353,24 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
 	if (!is_initialized_) {
     return;
   }
+
+  static int first=0;
+  
+  if (first<20)
+  {
+  	first++;
+  	return;
+  }
+  
+  // extract the pose part of the odometry
+  geometry_msgs::Pose current_pose = mrs_lib::getPose(sh_odometry_.getMsg());
+  
+    double current_heading=QuaternionToHeading(current_pose.orientation.w,current_pose.orientation.x,current_pose.orientation.y,current_pose.orientation.z);
+
+  
   static ros::Time start_time = ros::Time::now();
   static bool landed=false;
-  OPERATION_MODE mode=OPERATION_MODE::TEST_TAKEOFF_LAND;
+  OPERATION_MODE mode=OPERATION_MODE::FOLLOW_LINE;
   double x_diff, y_diff, z_diff, heading_diff;
   if (mode == OPERATION_MODE::TEST_TAKEOFF_LAND)
   {
@@ -370,6 +385,8 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
 	  }
 	  return;
   }
+
+
 
   /* return if the uav is still flying to the previous waypoints */
  /* if (have_goal_) {
@@ -388,7 +405,7 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
   tf::StampedTransform transform;
   ros::Time t = ros::Time(0);
   try {
-	  transform_listener.lookupTransform("uav1/fcu", "power_line", t, transform);
+	  transform_listener.lookupTransform("/magnetometer_center", "/power_line0", t, transform);
 
   }
   catch (tf::TransformException ex){
@@ -402,12 +419,9 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
 
   double heading1 =QuaternionToHeading(qw,qx,qy,qz);
 
-  // extract the pose part of the odometry
-  geometry_msgs::Pose current_pose = mrs_lib::getPose(sh_odometry_.getMsg());
-  double current_heading=QuaternionToHeading(current_pose.orientation.w,current_pose.orientation.x,current_pose.orientation.y,current_pose.orientation.z);
 
 
-  std::cout<<transform.getOrigin().x()<<" "<<transform.getOrigin().y()<<" "<<transform.getOrigin().z()<<" "<<heading1<<"    powerline heading "<< current_heading+heading1<<std::endl;
+//  std::cout<<transform.getOrigin().x()<<" "<<transform.getOrigin().y()<<" "<<transform.getOrigin().z()<<" "<<heading1<<"    powerline heading "<< current_heading+heading1<<std::endl;
 
 
   double dx=transform.getOrigin().x();
@@ -418,11 +432,14 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
   {
 	  heading1=heading1+3.14159265;
   }
-
-  double position_gain=0.01;
-  double max_position_speed=0.1;
-  double heading_gain=0.01;
-  double max_heading_speed=0.1;
+	static int count_goal_reached=0;
+  double position_gain=0.02;
+  double max_position_speed=0.2;
+  double heading_gain=0.001;
+  double max_heading_speed=0.01;
+  xpos=current_pose.position.x;
+  ypos=current_pose.position.y;
+  zpos=current_pose.position.z;
 
   if (mode == OPERATION_MODE::FOLLOW_LINE)
   {
@@ -436,14 +453,18 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
 	  if (fabs(z_diff)>max_position_speed) z_diff=(z_diff)/fabs(z_diff)*max_position_speed;
 	  if (fabs(heading_diff)>max_heading_speed) heading_diff=(heading_diff)/fabs(heading_diff)*max_heading_speed;
 
-	  if (fabs(x_ref-dx)<0.1 && fabs(y_ref-dy)<0.1 && fabs(z_ref-dz)<0.1 && fabs(heading_ref-heading1)<0.1)
+	  if (fabs(x_ref-dx)<0.2 && fabs(y_ref-dy)<0.2 && fabs(z_ref-dz)<0.2 && fabs(heading_ref-heading1)<0.2)
 	  {
-		  y_diff=y_diff+0.1;
+		 count_goal_reached++;
+	//	  x_diff=x_diff-0.1;
 	  }
+	  std::cout<<"heading "<< xpos<< " "<<ypos<<" "<<zpos<<" "<<heading<<"   goal reached count"<<count_goal_reached<<std::endl;
 	  heading=heading-heading_diff;
 	  xpos=xpos-(cos(heading)*x_diff-sin(heading)*y_diff);
 	  ypos=ypos-(sin(heading)*x_diff+cos(heading)*y_diff);
 	  zpos=zpos-z_diff;
+
+	  std::cout<<"goal "<< -(cos(heading)*x_diff-sin(heading)*y_diff)<< " "<<-(sin(heading)*x_diff+cos(heading)*y_diff)<<" "<<z_diff<<" "<<heading_diff<<std::endl;
   }
   if (mode == OPERATION_MODE::LEFT_RIGHT)
   {
