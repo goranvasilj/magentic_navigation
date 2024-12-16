@@ -437,9 +437,10 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
   double max_position_speed=0.2;
   double heading_gain=0.001;
   double max_heading_speed=0.01;
-  xpos=current_pose.position.x;
-  ypos=current_pose.position.y;
-  zpos=current_pose.position.z;
+  xpos=xpos*0.8+0.2*current_pose.position.x;
+  ypos=ypos*0.8+0.2*current_pose.position.y;
+  zpos=zpos*0.8+0.2*current_pose.position.z;
+  heading=heading*0.8+0.2*current_heading;
 
   if (mode == OPERATION_MODE::FOLLOW_LINE)
   {
