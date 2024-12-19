@@ -183,7 +183,7 @@ void MagneticNavigation::onInit() {
   xpos=0;
   ypos=0;
   zpos=3;
-  x_ref=-1.2;
+  x_ref=1.8;
   y_ref=0;
   z_ref=0;
   heading=1.57;
@@ -361,7 +361,7 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
   	first++;
   	return;
   }
-  
+  first++;
   // extract the pose part of the odometry
   geometry_msgs::Pose current_pose = mrs_lib::getPose(sh_odometry_.getMsg());
   
@@ -421,40 +421,50 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
 
 
 
-//  std::cout<<transform.getOrigin().x()<<" "<<transform.getOrigin().y()<<" "<<transform.getOrigin().z()<<" "<<heading1<<"    powerline heading "<< current_heading+heading1<<std::endl;
+  std::cout<<transform.getOrigin().x()<<" "<<transform.getOrigin().y()<<" "<<transform.getOrigin().z()<<" "<<heading1<<"    powerline heading "<< current_heading+heading1<<std::endl;
 
 
   double dx=transform.getOrigin().x();
   double dy=transform.getOrigin().y();
   double dz=transform.getOrigin().z();
 
-  if (fabs(current_heading+heading1) >3.14159/2)
+  if (fabs(heading_ref-heading1) >3.14159/2)
   {
 	  heading1=heading1+3.14159265;
   }
 	static int count_goal_reached=0;
   double position_gain=0.02;
-  double max_position_speed=0.2;
-  double heading_gain=0.001;
-  double max_heading_speed=0.01;
-  xpos=xpos*0.8+0.2*current_pose.position.x;
-  ypos=ypos*0.8+0.2*current_pose.position.y;
-  zpos=zpos*0.8+0.2*current_pose.position.z;
-  heading=heading*0.8+0.2*current_heading;
+  double max_position_speed=0.01;
+  double heading_gain=0.01;
+  double max_heading_speed=0.001;
+  if (first==20)
+  {	
+  	xpos=current_pose.position.x;
+  	ypos=current_pose.position.y;
+  	zpos=current_pose.position.z;
+  	heading=current_heading;
+  }
+/*  xpos=xpos*0.5+0.5*current_pose.position.x;
+  ypos=ypos*0.5+0.5*current_pose.position.y;
+  zpos=zpos*0.5+0.5*current_pose.position.z;
+  heading=heading*0.5+0.5*current_heading;*/
 
   if (mode == OPERATION_MODE::FOLLOW_LINE)
   {
 	  double x_diff=(x_ref-dx)*position_gain;
-	  double y_diff=(y_ref-dy)*position_gain;
+	  double y_diff=0;//(y_ref-dy)*position_gain;
 	  double z_diff=(z_ref-dz)*position_gain;
 	  double heading_diff=(heading_ref-heading1)*heading_gain;
+	  if (heading_diff>3.14159) heading_diff=heading_diff-2*3.14159;
+	  
+	  if (heading_diff<-3.14159) heading_diff=heading_diff+2*3.14159;
 
 	  if (fabs(x_diff)>max_position_speed) x_diff=(x_diff)/fabs(x_diff)*max_position_speed;
 	  if (fabs(y_diff)>max_position_speed) y_diff=(y_diff)/fabs(y_diff)*max_position_speed;
 	  if (fabs(z_diff)>max_position_speed) z_diff=(z_diff)/fabs(z_diff)*max_position_speed;
 	  if (fabs(heading_diff)>max_heading_speed) heading_diff=(heading_diff)/fabs(heading_diff)*max_heading_speed;
 
-	  if (fabs(x_ref-dx)<0.2 && fabs(y_ref-dy)<0.2 && fabs(z_ref-dz)<0.2 && fabs(heading_ref-heading1)<0.2)
+	  if (fabs(x_ref-dx)<0.2 /*&& fabs(y_ref-dy)<0.2*/ && fabs(z_ref-dz)<0.2 && fabs(heading_ref-heading1)<0.2)
 	  {
 		 count_goal_reached++;
 	//	  x_diff=x_diff-0.1;
