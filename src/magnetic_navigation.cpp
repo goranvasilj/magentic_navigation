@@ -183,7 +183,7 @@ void MagneticNavigation::onInit() {
   xpos=0;
   ypos=0;
   zpos=3;
-  x_ref=1.8;
+  x_ref=2.2;
   y_ref=0;
   z_ref=0;
   heading=1.57;
@@ -446,8 +446,8 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
   }
 /*  xpos=xpos*0.5+0.5*current_pose.position.x;
   ypos=ypos*0.5+0.5*current_pose.position.y;
-  zpos=zpos*0.5+0.5*current_pose.position.z;
-  heading=heading*0.5+0.5*current_heading;*/
+  zpos=zpos*0.5+0.5*current_pose.position.z;*/
+  heading=heading*0.5+0.5*current_heading;
 
   if (mode == OPERATION_MODE::FOLLOW_LINE)
   {
@@ -464,10 +464,10 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
 	  if (fabs(z_diff)>max_position_speed) z_diff=(z_diff)/fabs(z_diff)*max_position_speed;
 	  if (fabs(heading_diff)>max_heading_speed) heading_diff=(heading_diff)/fabs(heading_diff)*max_heading_speed;
 
-	  if (fabs(x_ref-dx)<0.2 /*&& fabs(y_ref-dy)<0.2*/ && fabs(z_ref-dz)<0.2 && fabs(heading_ref-heading1)<0.2)
+	  if (fabs(x_ref-dx)<0.4 /*&& fabs(y_ref-dy)<0.2*/ && fabs(z_ref-dz)<0.4 && fabs(heading_ref-heading1)<0.2)
 	  {
 		 count_goal_reached++;
-	//	  x_diff=x_diff-0.1;
+		  y_diff=y_diff+0.5;
 	  }
 	  std::cout<<"heading "<< xpos<< " "<<ypos<<" "<<zpos<<" "<<heading<<"   goal reached count"<<count_goal_reached<<std::endl;
 	  heading=heading-heading_diff;
