@@ -433,8 +433,8 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
 	  heading1=heading1+3.14159265;
   }
 	static int count_goal_reached=0;
-  double position_gain=0.02;
-  double max_position_speed=0.01;
+  double position_gain=0.05;
+  double max_position_speed=0.05;
   double heading_gain=0.01;
   double max_heading_speed=0.001;
   if (first==20)
@@ -467,7 +467,7 @@ void MagneticNavigation::timerPublishSetReference([[maybe_unused]] const ros::Ti
 	  if (fabs(x_ref-dx)<0.4 /*&& fabs(y_ref-dy)<0.2*/ && fabs(z_ref-dz)<0.4 && fabs(heading_ref-heading1)<0.2)
 	  {
 		 count_goal_reached++;
-		  y_diff=y_diff+0.5;
+		  y_diff=y_diff+0.05;
 	  }
 	  std::cout<<"heading "<< xpos<< " "<<ypos<<" "<<zpos<<" "<<heading<<"   goal reached count"<<count_goal_reached<<std::endl;
 	  heading=heading-heading_diff;
